@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ team_name }} - Game Results</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .results-table {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        .table thead th {
+            background-color: #0d6efd;
+            color: white;
+            border: none;
+        }
+        .table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+        .score {
+            font-weight: bold;
+        }
+        .win {
+            color: #198754;
+        }
+        .loss {
+            color: #dc3545;
+        }
+        .tie {
+            color: #6c757d;
+        }
+        .back-link {
+            color: #0d6efd;
+            text-decoration: none;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Rankings</a>
+        <h1 class="text-center mb-4">{{ team_name }} - Game Results</h1>
+        
+        <div class="results-table">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Opponent</th>
+                        <th>Score</th>
+                        <th>Result</th>
+                        <th>Game Type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for game in games %}
+                    <tr>
+                        <td>{{ game['Date'] }}</td>
+                        <td>
+                            {% if game['Home Team'] == team_name %}
+                                {{ game['Away Team'] }} (A)
+                            {% else %}
+                                {{ game['Home Team'] }} (H)
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if game['Home Team'] == team_name %}
+                                {{ game['Home Score'] }} - {{ game['Away Score'] }}
+                            {% else %}
+                                {{ game['Away Score'] }} - {{ game['Home Score'] }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if game['Home Team'] == team_name %}
+                                {% if game['Home Score'] > game['Away Score'] %}
+                                    <span class="win">Win</span>
+                                {% elif game['Home Score'] < game['Away Score'] %}
+                                    <span class="loss">Loss</span>
+                                {% else %}
+                                    <span class="tie">Tie</span>
+                                {% endif %}
+                            {% else %}
+                                {% if game['Away Score'] > game['Home Score'] %}
+                                    <span class="win">Win</span>
+                                {% elif game['Away Score'] < game['Home Score'] %}
+                                    <span class="loss">Loss</span>
+                                {% else %}
+                                    <span class="tie">Tie</span>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td>{{ game['Game Type'] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 
