@@ -1,10 +1,44 @@
-from flask import Flask, render_template, request, jsonify
-import pandas as pd
 import os
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+import pandas as pd
 from datetime import datetime
 import glob
+from models import User, db
+from dotenv import load_dotenv
+import logging
+from flask_sqlalchemy import SQLAlchemy
+from config import Config
+from sqlalchemy import text
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = Config.SECRET_KEY
+app.config['SQLALCHEMY_DATABASE_URI'] = Config.get_database_uri()
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# Initialize SQLAlchemy with app
+db.init_app(app)
+
+@login_manager.user_loader
+def load_user(user_id):
+    try:
+        return User.query.get(int(user_id))
+    except Exception as e:
+        logger.error(f"Error loading user {user_id}: {str(e)}")
+        return None
 
 def get_states():
     return [
@@ -256,7 +290,7 @@ def get_game_results(state, season, gender, page=1, per_page=20, team_filter=Non
             'per_page': per_page
         }
 
-def get_teams(season, gender):
+def get_teams(season, gender, state=None):
     try:
         filename = f'rankings_{season}_{gender}.csv'
         filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', filename)
@@ -367,39 +401,128 @@ def index():
     selected_gender = request.args.get('gender', 'girls')
     selected_season = request.args.get('season', '24-25')
     selected_team = request.args.get('team', '')
+    page = request.args.get('page', 1, type=int)
     
+    # Get filter options
     states = get_states()
     genders = get_genders()
     seasons = get_seasons()
-    teams = get_teams(selected_season, selected_gender)
     
-    # Get rankings based on selected filters
+    # Get rankings data
     rankings = load_rankings(selected_season, selected_gender, selected_team)
     
+    # If user is not logged in, show only first 25 teams
+    if not current_user.is_authenticated:
+        rankings = rankings[:25]
+    
+    # Get game results with pagination
+    game_results = get_game_results(selected_state, selected_season, selected_gender, team_filter=selected_team, page=page)
+    
+    # Get all teams for the team filter dropdown
+    all_teams = get_teams(selected_season, selected_gender, selected_state)
+    
     return render_template('index.html',
+                         rankings=rankings,
+                         game_results=game_results['results'],
+                         total_pages=game_results['total_pages'],
+                         current_page=game_results['current_page'],
                          states=states,
-                         selected_state=selected_state,
                          genders=genders,
-                         selected_gender=selected_gender,
                          seasons=seasons,
-                         selected_season=selected_season,
-                         teams=teams,
+                         state=selected_state,
+                         gender=selected_gender,
+                         season=selected_season,
                          selected_team=selected_team,
-                         rankings=rankings)
+                         all_teams=all_teams)
 
-@app.route('/get_teams')
-def get_teams_endpoint():
-    state = request.args.get('state', 'USA')
-    season = request.args.get('season', '24-25')
-    gender = request.args.get('gender', 'girls')
-    search_term = request.args.get('q', '').lower()
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        try:
+            user = User.query.filter_by(email=email).first()
+            
+            if user and user.check_password(password):
+                login_user(user)
+                next_page = request.args.get('next')
+                return redirect(next_page or url_for('index'))
+            else:
+                flash('Invalid email or password')
+                return redirect(url_for('login'))
+        except Exception as e:
+            logger.error(f"Error during login: {str(e)}")
+            flash('An error occurred during login')
+            return redirect(url_for('login'))
     
-    teams = get_teams(season, gender)
-    filtered_teams = [team for team in teams if search_term in team.lower()]
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    # Test database connection first
+    try:
+        db.session.execute(text('SELECT 1'))
+        logger.info("Database connection test successful")
+    except Exception as e:
+        logger.error(f"Database connection test failed: {str(e)}")
+        flash('Unable to connect to database. Please try again later.')
+        return redirect(url_for('register'))
+
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        name = request.form.get('name')
+        
+        logger.info(f"Attempting to register user with email: {email}")
+        
+        try:
+            # Check if user already exists
+            user = User.query.filter_by(email=email).first()
+            if user:
+                logger.info(f"User with email {email} already exists")
+                flash('Email already registered')
+                return redirect(url_for('register'))
+            
+            # Create new user
+            logger.info("Creating new user object")
+            user = User(
+                email=email,
+                name=name
+            )
+            logger.info("Setting password hash")
+            user.set_password(password)
+            
+            # Add to database
+            logger.info("Adding user to database session")
+            db.session.add(user)
+            logger.info("Committing database session")
+            db.session.commit()
+            logger.info(f"Successfully registered user: {email}")
+            
+            # Log in the new user
+            login_user(user)
+            return redirect(url_for('index'))
+            
+        except Exception as e:
+            logger.error(f"Detailed error during registration: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            db.session.rollback()
+            flash('An error occurred during registration')
+            return redirect(url_for('register'))
     
-    return jsonify({'teams': filtered_teams})
+    return render_template('register.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
 
 @app.route('/team/<team_name>')
+@login_required
 def team_results(team_name):
     selected_state = request.args.get('state', 'USA')
     selected_gender = request.args.get('gender', 'girls')
@@ -416,6 +539,7 @@ def team_results(team_name):
                          season=selected_season)
 
 @app.route('/team-details/<team_name>')
+@login_required
 def team_details(team_name):
     selected_state = request.args.get('state', 'USA')
     selected_gender = request.args.get('gender', 'girls')
@@ -433,5 +557,20 @@ def team_details(team_name):
                          dates=dates,
                          rankings_history=rankings_history)
 
+@app.route('/profile')
+@login_required
+def profile():
+    return render_template('profile.html', user=current_user)
+
 if __name__ == '__main__':
-    app.run(debug=False) 
+    with app.app_context():
+        try:
+            db.create_all()
+            logger.info("Database tables created successfully")
+        except Exception as e:
+            logger.error(f"Error creating database tables: {str(e)}")
+            raise
+    # Use port 5001 and enable debug mode in development
+    port = int(os.environ.get('PORT', 5001))
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(host='0.0.0.0', port=port, debug=debug) 

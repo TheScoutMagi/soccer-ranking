@@ -1,10 +1,40 @@
-.git
-.gitignore
-.env
-.venv
-env/
-venv/
-ENV/
+# Python
 __pycache__/
 *.pyc
-.DS_Store 
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.env.*
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Local development
+*.log
+.DS_Store
+cloud_sql_proxy*
+
+# Virtual Environment
+ENV/
+
+# Environment variables
+.env.development
+.env.production
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+*.log
+
+# OS
+Thumbs.db 

@@ -1,0 +1,84 @@
+steps:
+  # Enable necessary APIs
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'services'
+      - 'enable'
+      - 'secretmanager.googleapis.com'
+      - 'run.googleapis.com'
+      - 'cloudbuild.googleapis.com'
+      - 'sql-component.googleapis.com'
+      - 'sqladmin.googleapis.com'
+
+  # Grant Cloud Build SA the Cloud Run Admin role
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'projects'
+      - 'add-iam-policy-binding'
+      - 'scoutmagi-soccer'
+      - '--member'
+      - 'serviceAccount:308394067242@cloudbuild.gserviceaccount.com'
+      - '--role'
+      - 'roles/run.admin'
+
+  # Grant Cloud Build SA the Service Account User role
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'projects'
+      - 'add-iam-policy-binding'
+      - 'scoutmagi-soccer'
+      - '--member'
+      - 'serviceAccount:308394067242@cloudbuild.gserviceaccount.com'
+      - '--role'
+      - 'roles/iam.serviceAccountUser'
+
+  # Grant Cloud Run SA the Secret Manager Secret Accessor role
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'projects'
+      - 'add-iam-policy-binding'
+      - 'scoutmagi-soccer'
+      - '--member'
+      - 'serviceAccount:308394067242-compute@developer.gserviceaccount.com'
+      - '--role'
+      - 'roles/secretmanager.secretAccessor'
+
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/scoutmagi-soccer/soccer-ranking', '.']
+
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/scoutmagi-soccer/soccer-ranking']
+
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'soccer-ranking'
+      - '--image'
+      - 'gcr.io/scoutmagi-soccer/soccer-ranking'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'FLASK_ENV=production,DB_USER=scoutmagi,DB_NAME=users'
+      - '--add-cloudsql-instances'
+      - 'scoutmagi-soccer:us-central1:soccer-rankings-db'
+      - '--vpc-connector'
+      - 'soccer-rankings-connector'
+      - '--set-secrets'
+      - 'DB_PASS=DB_PASSWORD:latest'
+      - '--service-account'
+      - '308394067242-compute@developer.gserviceaccount.com'
+
+images:
+  - 'gcr.io/scoutmagi-soccer/soccer-ranking' 
